@@ -188,7 +188,7 @@ def extract_resume_workflow(file_path: str) -> dict:
 # Usage:
 if __name__ == "__main__":
     # Specify the file path directly
-    file_path = "Abdul_S_resume.pdf"  # Replace with the actual path to the resume file
+    file_path = "Lavanya (DevOps)_V.docx"  # Replace with the actual path to the resume file
 
     try:
         # Execute the workflow
