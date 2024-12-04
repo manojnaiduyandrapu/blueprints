@@ -13,7 +13,7 @@ from pydantic import ValidationError
 import json
 import re
 import pandas as pd
-import googlemaps  # Added import
+import googlemaps
 from math import radians, cos, sin, asin, sqrt
 
 # Load environment variables from .env file
@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # API Keys
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-GOOGLE_API_KEY = os.getenv('GOOGLE_MATRIX_API_KEY')  # Added
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')  # Use the same key for both APIs
 
 # Validate that the API keys are available
 if not OPENAI_API_KEY:
@@ -37,7 +37,8 @@ if not GOOGLE_API_KEY:
 
 # Initialize APIs
 openai.api_key = OPENAI_API_KEY
-gmaps = googlemaps.Client(key=GOOGLE_API_KEY)  # Initialized Google Maps client
+gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
+# gmaps will be used for both Distance Matrix and Places API calls
 
 # Mock API URLs (Replace with your actual Postman mock server URLs)
 MOCK_SERVER_BASE_URL = 'https://12036995-4de7-4870-ae4e-f8b22ccb2c09.mock.pstmn.io'  # Replace with your Mock Server Base URL
@@ -189,22 +190,13 @@ def get_flight_distance(origin: str, destination: str) -> Optional[float]:
 
 def get_distance_duration(origin: str, destination: str, mode: str = "driving") -> Optional[dict]:
     """
-    Fetches the distance and duration between two cities using Google Distance Matrix API.
-
-    Parameters:
-        origin (str): The starting city.
-        destination (str): The destination city.
-        mode (str): Mode of transportation (driving, walking, transit, bicycling).
-
-    Returns:
-        dict: Contains 'distance_text', 'distance_value', 'duration_text', 'duration_value'.
+    Fetches the distance and duration between two locations using Google Distance Matrix API.
     """
     try:
         logging.info(f"Fetching distance and duration from {origin} to {destination} using Google Distance Matrix API with mode '{mode}'.")
         result = gmaps.distance_matrix(origins=[origin],
                                        destinations=[destination],
                                        mode=mode,
-                                       departure_time="now",
                                        units="metric")
 
         if result['status'] != 'OK':
@@ -332,45 +324,81 @@ def get_flight_deals(origin: str, destination: str, start_date: datetime, end_da
         logging.error(f"Error fetching flight deals: {e}")
         return []
 
-def generate_itinerary(origin: str, destination: str, start_date: datetime, end_date: datetime, remaining_budget: float, selected_hotel: dict, weather_info: Optional[dict] = None):
+def find_nearby_places(location: tuple, radius: int = 5000, place_type: str = "tourist_attraction") -> List[dict]:
     """
-    Generates a travel itinerary using OpenAI's GPT model, ensuring it stays within the remaining budget.
+    Finds nearby places of interest around a given location using Google Places API.
     """
     try:
-        if weather_info:
-            # Construct the prompt with weather information and selected hotel details
-            prompt = (
-                f"Create a detailed travel itinerary for a trip from {origin} to {destination} "
-                f"from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}. "
-                f"You will be staying at {selected_hotel['name']} which costs ${selected_hotel['price']} per night. "
-                f"The remaining budget for daily expenses, activities, dining, and transportation is ${remaining_budget:.2f}. "
-                f"The weather forecast is as follows:\n"
+        logging.info(f"Searching for nearby places around {location} within {radius} meters.")
+        response = gmaps.places_nearby(
+            location=location,
+            radius=radius,
+            type=place_type
+        )
+
+        places = response.get('results', [])
+        logging.info(f"Found {len(places)} nearby places.")
+        return places
+    except Exception as e:
+        logging.error(f"Error finding nearby places: {e}")
+        return []
+
+def generate_itinerary(origin: str, destination: str, start_date: datetime, end_date: datetime, remaining_budget: float, selected_hotel: dict, weather_info: Optional[dict] = None):
+    """
+    Generates a travel itinerary using OpenAI's GPT model, including nearby places with distance and duration.
+    """
+    try:
+        # Get the hotel coordinates
+        hotel_location = (selected_hotel['latitude'], selected_hotel['longitude'])
+
+        # Find nearby attractions
+        nearby_places = find_nearby_places(hotel_location)
+
+        # Prepare a list of attraction details with distance and duration from hotel
+        attractions_info = []
+        for place in nearby_places[:5]:  # Limiting to top 5 attractions
+            place_name = place['name']
+            place_location = place['geometry']['location']
+            distance_duration = get_distance_duration(
+                origin=f"{hotel_location[0]},{hotel_location[1]}",
+                destination=f"{place_location['lat']},{place_location['lng']}",
+                mode="walking"
             )
+            if distance_duration:
+                attractions_info.append({
+                    'name': place_name,
+                    'distance': distance_duration['distance_text'],
+                    'duration': distance_duration['duration_text']
+                })
+
+        # Construct the prompt with nearby attractions, weather, and selected hotel details
+        prompt = (
+            f"Create a detailed daily travel itinerary for a trip from {origin} to {destination} "
+            f"from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}. "
+            f"You will be staying at {selected_hotel['name']} which costs ${selected_hotel['price']} per night. "
+            f"The remaining budget for daily expenses, activities, dining, and transportation is ${remaining_budget:.2f}. "
+            f"The following are nearby attractions to your hotel:\n"
+        )
+
+        for attraction in attractions_info:
+            prompt += f"- {attraction['name']} ({attraction['distance']} away, approx. {attraction['duration']} walk)\n"
+
+        if weather_info:
+            prompt += "The weather forecast is as follows:\n"
             for date, info in weather_info.items():
                 prompt += f"- {date}: {info['description']}, Day Temp: {info['temp_day']}°C, Night Temp: {info['temp_night']}°C\n"
 
-            prompt += (
-                "Include daily activities, places to visit, and dining suggestions suitable for the weather conditions, "
-                "while ensuring that the total cost of these activities does not exceed the remaining budget. "
-                "Provide a summary of daily estimated costs for each activity and meal."
-            )
-        else:
-            # Construct a general prompt without weather information but with selected hotel and remaining budget
-            prompt = (
-                f"Create a detailed travel itinerary for a trip from {origin} to {destination} "
-                f"from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}. "
-                f"You will be staying at {selected_hotel['name']} which costs ${selected_hotel['price']} per night. "
-                f"The remaining budget for daily expenses, activities, dining, and transportation is ${remaining_budget:.2f}. "
-                "Include daily activities, places to visit, and dining suggestions, ensuring that the total cost does not exceed the remaining budget. "
-                "Provide a summary of daily estimated costs for each activity and meal."
-            )
+        prompt += (
+            "Plan activities for each day, incorporating these attractions, and provide the estimated time and distance for each activity. "
+            "Ensure that the total cost of activities stays within the remaining budget. Provide a summary of daily estimated costs."
+        )
 
         logging.info("Generating itinerary with OpenAI.")
         # Generate itinerary using OpenAI's GPT
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a helpful travel planner who ensures itineraries stay within budget."},
+                {"role": "system", "content": "You are a helpful travel planner who creates detailed itineraries including nearby attractions, distances, durations, and ensures itineraries stay within budget."},
                 {"role": "user", "content": prompt}
             ],
         )
@@ -385,12 +413,6 @@ def generate_itinerary(origin: str, destination: str, start_date: datetime, end_
 def process_weather_data(forecast_entries: pd.DataFrame) -> dict:
     """
     Processes weather forecast entries to extract daily weather information.
-
-    Parameters:
-        forecast_entries (DataFrame): DataFrame containing forecast entries.
-
-    Returns:
-        dict: Dictionary containing weather information per date.
     """
     weather_info = {}
     for _, row in forecast_entries.iterrows():
@@ -415,14 +437,6 @@ def process_weather_data(forecast_entries: pd.DataFrame) -> dict:
 def get_weather_forecast(city: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
     """
     Retrieves weather forecast from the CSV data for a specific city and date range.
-
-    Parameters:
-        city (str): City name.
-        start_date (datetime): Start date of the forecast.
-        end_date (datetime): End date of the forecast.
-
-    Returns:
-        DataFrame or None: Filtered weather data.
     """
     try:
         mask = (
@@ -444,9 +458,6 @@ def get_weather_forecast(city: str, start_date: datetime, end_date: datetime) ->
 def display_weather(forecast: pd.DataFrame):
     """
     Displays the weather forecast in a readable format.
-
-    Parameters:
-        forecast (DataFrame): Weather forecast data.
     """
     if forecast is None or forecast.empty:
         print("No weather data available.")
@@ -461,7 +472,7 @@ def main():
     print("Welcome to the Multi-City Travel Planner!")
 
     # User Input as a semantic query
-    query = input("Enter your travel plans (e.g., 'I want to travel from New York to Los Angeles to San Francisco to Sacramento, starting on 2024-11-26 and ending on 2024-12-05, with a budget of $10,000, preferring entire rooms and pet-friendly accommodations'): ").strip()
+    query = input("Enter your travel plans (e.g., 'I want to travel from New York to Los Angeles, starting on 2024-12-23 and ending on 2024-12-28, with a budget of $4500, preferring entire rooms and pet-friendly accommodations'): ").strip()
 
     # Parse the query to extract travel details and constraints
     travel_details = get_travel_details(query)
@@ -592,6 +603,15 @@ def main():
         total_hotel_cost += hotel_cost
         remaining_budget -= hotel_cost
 
+        # Get coordinates for the selected hotel
+        hotel_coordinates = get_coordinates(selected_hotel['address'])
+        if hotel_coordinates:
+            selected_hotel['latitude'], selected_hotel['longitude'] = hotel_coordinates
+        else:
+            # Default to city center if hotel coordinates are not found
+            city_coordinates = get_coordinates(current_destination)
+            selected_hotel['latitude'], selected_hotel['longitude'] = city_coordinates
+
         # Append segment details to itinerary_segments, including flight duration and distance
         itinerary_segments.append({
             'origin': current_origin,
@@ -634,8 +654,6 @@ def main():
                 weather_info[dest] = None
     else:
         logging.warning("Weather forecast is not available for the entire trip duration.")
-        # Optionally, handle partial weather data if some dates are within the forecast range
-        # For simplicity, we'll skip weather data in this example
 
     # Generate itinerary for each segment
     full_itinerary = ""
