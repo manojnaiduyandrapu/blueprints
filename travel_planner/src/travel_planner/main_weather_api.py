@@ -308,7 +308,7 @@ def main():
     print("Welcome to the Multi-City Travel Planner!")
 
     # User Input as a semantic query
-    query = input("Enter your travel plans (e.g., 'I want to travel from New York to Los Angeles to San Francisco to Sacramento, starting on 2024-11-26 and ending on 2024-12-05, with a budget of $10,000, preferring entire rooms and pet-friendly accommodations'): ").strip()
+    query = input("Enter your travel plans (e.g., 'I want to travel from New York to Los Angeles, starting on 2024-12-23 and ending on 2024-12-28, with a budget of $4500, preferring entire rooms and pet-friendly accommodations'): ").strip()
 
     # Parse the query to extract travel details and constraints
     travel_details = get_travel_details(query)

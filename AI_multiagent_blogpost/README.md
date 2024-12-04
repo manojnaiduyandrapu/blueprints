@@ -49,7 +49,7 @@ Follow these steps to set up the project on your local machine:
    ```bash
    cd path/to/AI_multiagent_blogpost
 
-4. **Install Dependencies**
+4. **Install Dependencies** 
 
     ```bash
     pip install -r requirements.txt
