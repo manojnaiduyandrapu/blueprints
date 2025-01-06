@@ -1,14 +1,17 @@
 import os
 import requests
-import openai
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
+from openai import OpenAI  
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Set up OpenAI API key
-openai.api_key = os.getenv('OPENAI_API_KEY')
+# Set up OpenAI API key and instantiate the client
+client = OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY'),  
+)
 
 # Specify the model to use:
 MODEL = "gpt-4o-mini"  # Ensure this is the correct model name
@@ -136,8 +139,8 @@ def get_reddit_posts(destination, subreddit='travel', limit=5):
             }
 
             # If the post is a link post (i.e., has no selftext), attempt to fetch external content
-            if not post_info['content'] and post_info.get('url'):
-                external_content = fetch_external_url_content(post_info['url'])
+            if not post_info['content'] and post_data.get('url'):
+                external_content = fetch_external_url_content(post_data['url'])
                 post_info['external_content'] = external_content
 
             post_list.append(post_info)
@@ -260,7 +263,6 @@ def get_weather_forecast(lat, lon, days=3):
 
         # Process daily forecast data
         forecast_info = f"3-Day Weather Forecast:\n"
-        today = datetime.utcnow().date()
         for i in range(min(days, len(data['daily']['time']))):
             date_str = data['daily']['time'][i]
             date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -359,26 +361,32 @@ def generate_itinerary(wiki_info, reddit_posts, weather_info, destination):
             else:
                 prompt += f"   Comments: [No comments available]\n"
 
-        prompt += "\nPlease provide a detailed 3-day itinerary, including activities, places to visit, and dining recommendations, considering the weather forecast and the information provided above and also add a section on suggestions on what to pack according to weather and also provide safety measures according to the reddit discuusion and comments."
+        prompt += (
+            "\nPlease provide a detailed 3-day itinerary, including activities, places to visit, dining recommendations, "
+            "suggestions on what to pack according to the weather, and safety measures based on the Reddit discussions and comments."
+        )
 
-        # Create messages for ChatCompletion API
+        # Create messages for ChatCompletion API using the latest OpenAI client
         messages = [
-            {"role": "system", "content": "You are an assistant that creates detailed and personalized travel itineraries based on provided information."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are an assistant that creates detailed and personalized travel itineraries based on provided information."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
         ]
 
-        # Call OpenAI's ChatCompletion API
-        response = openai.ChatCompletion.create(
-            model=MODEL,
+        # Call OpenAI's ChatCompletion API using the client
+        chat_completion = client.chat.completions.create(
             messages=messages,
+            model=MODEL,
         )
 
         # Extract the itinerary from the response
-        itinerary = response.choices[0].message['content'].strip()
+        itinerary = chat_completion.choices[0].message.content.strip()
         return itinerary
-    except openai.error.OpenAIError as e:
-        print(f"OpenAI API error: {e}")
-        return None
     except Exception as e:
         print(f"Error generating itinerary: {e}")
         return None
@@ -392,9 +400,6 @@ def main():
     if not destination:
         print("No destination entered. Exiting.")
         return
-
-    # Collect User Preferences (Optional)
-    # preferences = get_user_preferences()  # Uncomment if implementing user preferences
 
     # Fetch Wikipedia Information
     print("\nFetching detailed information from Wikipedia...")
@@ -492,5 +497,4 @@ def main():
         print("Could not generate itinerary.")
 
 if __name__ == "__main__":
-    from datetime import datetime  # Moved import here to prevent issues
     main()
