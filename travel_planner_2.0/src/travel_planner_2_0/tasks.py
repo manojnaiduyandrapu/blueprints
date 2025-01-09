@@ -86,11 +86,9 @@ async def extract_flight_details(results):
     """
     flight_data = []
 
-    # Check if "best_flights" exists in the response
     best_flights = results.get("best_flights", [])
     other_flights = results.get("other_flights", [])
 
-    # Fallback to other_flights if no best_flights are found
     if not best_flights:
         logger.info("No best flights found, falling back to other flights.")
         best_flights = other_flights
@@ -166,6 +164,7 @@ async def extract_top_5_hotels(response):
             "overall_rating": hotel.get("overall_rating", "Not Available"),
             "amenities": ", ".join(hotel.get("amenities", [])) or "Not Available",
             "nearby_places": ", ".join([place['name'] for place in hotel.get('nearby_places', [])]) or "Not Available",
+            "gps_coordinates": hotel.get("gps_coordinates", "Not Available"),
             "address": hotel.get("address", "Not Available")
         }
         hotels.append(hotel_info)
@@ -286,12 +285,10 @@ async def get_reddit_posts(destination: str, subreddit='travel', limit=5):
             'external_content': '',
             'permalink': post_data.get('permalink', '')
         }
-        # If there's no selftext, try to fetch external content
         if not post_info['content'] and post_data.get('url'):
             external_content = fetch_external_url_content(post_data['url'])
             post_info['external_content'] = external_content
 
-        # Fetch top comments
         comments = get_reddit_comments(post_info['permalink'], limit=3)
         post_info['comments'] = comments
         post_list.append(post_info)
@@ -336,7 +333,6 @@ async def get_geo_coordinates(destination: str, fallback_city: Optional[str] = N
     If 'destination' is 'Not Available' or fails to geocode, and a fallback_city is provided, 
     it will try the fallback city name instead.
     """
-    # 1) If the address itself is "Not Available" or empty
     if not destination or destination.lower() == "not available":
         if fallback_city:
             logger.warning(
@@ -353,14 +349,12 @@ async def get_geo_coordinates(destination: str, fallback_city: Optional[str] = N
             logger.error("No valid destination or fallback provided.")
             return (None, None)
 
-    # 2) Normal case: The destination is a valid string
     geocode_result = gmaps.geocode(destination)
     if geocode_result:
         location = geocode_result[0]["geometry"]["location"]
         return (location["lat"], location["lng"])
     else:
         logger.error(f"No geocoding results found for '{destination}'.")
-        # 3) Attempt fallback if the geocode failed for some reason
         if fallback_city:
             logger.warning(
                 f"Could not geocode '{destination}'. Trying fallback city: '{fallback_city}'"
@@ -577,7 +571,6 @@ async def find_nearby_places(location: tuple, radius: int = 10000, place_type: s
     logger.info(f"Found {len(places)} nearby places.")
     return places
 
-# Example helper task reused below
 @task(name="get-nights", description="Calculates the number of nights between two dates.")
 async def get_nights(start_date: datetime, end_date: datetime) -> int:
     """
@@ -610,6 +603,6 @@ async def get_flight_deals(origin_iata: str, destination_iata: str,
         start_date.strftime('%Y-%m-%d'),
         end_date.strftime('%Y-%m-%d')
     )
-    flight_data = extract_flight_details(results)  # Removed await
+    flight_data = extract_flight_details(results) 
     return flight_data
 

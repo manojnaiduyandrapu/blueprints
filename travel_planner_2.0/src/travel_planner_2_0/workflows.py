@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from models import TravelQuery
 from openai import OpenAI
 from utils import generate_json_schema
-from travel_document import TripItinerary 
+from travel_document import TripItinerary  # Importing TripItinerary model
 
 from tasks import (
     get_flight_deals,
@@ -349,7 +349,7 @@ async def generate_travel_plan(query: str) -> str:
         if i == num_legs - 1:
             leg_end_date = end_date
 
-        # Flights
+        # Flights retrieval and selection (unchanged)...
         flights = get_flight_deals(current_origin_iata, current_destination_iata, leg_start_date, leg_end_date)
         if not flights:
             return f"No flight deals found for {current_origin} to {current_destination}."
@@ -358,7 +358,6 @@ async def generate_travel_plan(query: str) -> str:
 
         inbound_cost = 0
         inbound_flight = None
-
         departure_token = selected_flight.get('departure_token')
         if departure_token:
             inbound_results = fetch_inbound_flights(
@@ -402,6 +401,38 @@ async def generate_travel_plan(query: str) -> str:
         selected_hotel = hotels[0]
         print(f"Selected Hotel: {selected_hotel['name']} at ${selected_hotel['rate_per_night']} per night, Rating: {selected_hotel['overall_rating']}")
 
+        # Parse GPS coordinates if available
+        gps_coords = selected_hotel.get("gps_coordinates")
+        hotel_lat = None
+        hotel_lng = None
+        if gps_coords and gps_coords != "Not Available":
+            if isinstance(gps_coords, dict):
+                hotel_lat = gps_coords.get('latitude')
+                hotel_lng = gps_coords.get('longitude')
+            elif isinstance(gps_coords, str):
+                try:
+                    lat_str, lon_str = gps_coords.split(',')
+                    hotel_lat = float(lat_str.strip())
+                    hotel_lng = float(lon_str.strip())
+                except Exception as e:
+                    logger.warning(f"Failed parsing GPS coordinates: {gps_coords}. Error: {e}")
+                    hotel_lat, hotel_lng = get_geo_coordinates(selected_hotel.get('address', current_destination))
+            else:
+                logger.warning(f"Unexpected gps_coordinates format: {gps_coords}")
+        else:
+            logger.warning("GPS coordinates not available. Using alternative geocoding.")
+            hotel_lat, hotel_lng = get_geo_coordinates(selected_hotel.get('address', current_destination))
+
+        selected_hotel['latitude'] = hotel_lat
+        selected_hotel['longitude'] = hotel_lng
+
+        # Use these coordinates for nearby places search if valid
+        if hotel_lat is not None and hotel_lng is not None:
+            nearby_places = find_nearby_places((hotel_lat, hotel_lng))
+        else:
+            logger.warning("Valid hotel coordinates not available for nearby place search.")
+            nearby_places = []
+
         try:
             price_per_night = float(selected_hotel['rate_per_night'].replace('$', '').replace(',', ''))
         except (ValueError, AttributeError):
@@ -411,16 +442,6 @@ async def generate_travel_plan(query: str) -> str:
         hotel_cost = price_per_night * nights_this_leg
         total_hotel_cost += hotel_cost
         remaining_budget -= hotel_cost
-
-        coords = get_geo_coordinates(selected_hotel.get('address', 'Not Available'))
-        if (coords[0] is None) or (coords[1] is None):
-            logger.warning(
-                f"Hotel address '{selected_hotel.get('address')}' is invalid. "
-                f"Falling back to city-level geocoding for '{current_destination}'."
-            )
-            coords = get_geo_coordinates(current_destination)
-
-        selected_hotel['latitude'], selected_hotel['longitude'] = coords or (None, None)
 
         itinerary_segments.append({
             'origin': current_origin,
@@ -466,8 +487,9 @@ async def generate_travel_plan(query: str) -> str:
     )
     return itineraries_json
 
+
 async def main_async():
-    query = "i want to travel from Phoenix to boston on 25th january and return on 28th january under 3000$."
+    query = "i want to travel from Phoenix to boston on 25th january and return on 28th january under 3000$.."
     itinerary = await generate_travel_plan(query)
     print(itinerary)
 
