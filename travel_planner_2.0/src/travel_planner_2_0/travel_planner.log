@@ -1,0 +1,164 @@
+2025-01-08T18:27:34.013532-0700 - INFO - Running async workflow: generate_travel_plan
+2025-01-08T18:27:35.916362-0700 - INFO - OpenAI response: ```json
+{
+    "origin": "New York",
+    "origin_iata": "",
+    "destination": "Rome",
+    "destination_iata": "",
+    "start_date": "2025-02-02",
+    "end_date": "2025-02-10",
+    "budget": 8000,
+    "accommodation_preferences": null
+}
+```
+2025-01-08T18:27:35.916926-0700 - INFO - Running task: get_nights
+2025-01-08T18:27:35.917560-0700 - INFO - Running task: get_flight_deals
+2025-01-08T18:27:35.917874-0700 - INFO - Running task: fetch_flight_results
+2025-01-08T18:27:36.113756-0700 - INFO - Fetched flight results from SerpAPI.
+2025-01-08T18:27:36.114044-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:27:36.114327-0700 - INFO - No best flights found, falling back to other flights.
+2025-01-08T18:27:36.114465-0700 - INFO - Extracted 0 flight details.
+2025-01-08T18:28:16.220964-0700 - INFO - Running async workflow: generate_travel_plan
+2025-01-08T18:28:18.003489-0700 - INFO - OpenAI response: ```json
+{
+  "origin": "New York",
+  "origin_iata": "",
+  "destination": "Toronto",
+  "destination_iata": "",
+  "start_date": "2025-02-02",
+  "end_date": "2025-02-10",
+  "budget": 3000,
+  "accommodation_preferences": {}
+}
+```
+2025-01-08T18:28:18.004047-0700 - INFO - Running task: get_nights
+2025-01-08T18:28:18.004655-0700 - INFO - Running task: get_flight_deals
+2025-01-08T18:28:18.004969-0700 - INFO - Running task: fetch_flight_results
+2025-01-08T18:28:18.201933-0700 - INFO - Fetched flight results from SerpAPI.
+2025-01-08T18:28:18.202207-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:28:18.202480-0700 - INFO - No best flights found, falling back to other flights.
+2025-01-08T18:28:18.202619-0700 - INFO - Extracted 0 flight details.
+2025-01-08T18:29:01.805942-0700 - INFO - Running async workflow: generate_travel_plan
+2025-01-08T18:29:03.391707-0700 - INFO - OpenAI response: ```json
+{
+  "origin": "Phoenix",
+  "origin_iata": "PHX",
+  "destination": "San Francisco",
+  "destination_iata": "SFO",
+  "start_date": "2025-01-25",
+  "end_date": "2025-01-28",
+  "budget": 3000,
+  "accommodation_preferences": {}
+}
+```
+2025-01-08T18:29:03.392267-0700 - INFO - Running task: get_nights
+2025-01-08T18:29:03.392896-0700 - INFO - Running task: get_flight_deals
+2025-01-08T18:29:03.393214-0700 - INFO - Running task: fetch_flight_results
+2025-01-08T18:29:03.606765-0700 - INFO - Fetched flight results from SerpAPI.
+2025-01-08T18:29:03.607139-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:29:03.607510-0700 - INFO - No best flights found, falling back to other flights.
+2025-01-08T18:29:03.607703-0700 - INFO - Extracted 0 flight details.
+2025-01-08T18:29:25.108941-0700 - INFO - Running async workflow: generate_travel_plan
+2025-01-08T18:29:26.615187-0700 - INFO - OpenAI response: ```json
+{
+  "origin": "Phoenix",
+  "origin_iata": "PHX",
+  "destination": "Boston",
+  "destination_iata": "BOS",
+  "start_date": "2025-01-25",
+  "end_date": "2025-01-28",
+  "budget": 3000,
+  "accommodation_preferences": null
+}
+```
+2025-01-08T18:29:26.615755-0700 - INFO - Running task: get_nights
+2025-01-08T18:29:26.616380-0700 - INFO - Running task: get_flight_deals
+2025-01-08T18:29:26.616690-0700 - INFO - Running task: fetch_flight_results
+2025-01-08T18:29:26.887340-0700 - INFO - Fetched flight results from SerpAPI.
+2025-01-08T18:29:26.887702-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:29:26.888071-0700 - INFO - No best flights found, falling back to other flights.
+2025-01-08T18:29:26.888255-0700 - INFO - Extracted 0 flight details.
+2025-01-08T18:30:05.111087-0700 - INFO - Running async workflow: generate_travel_plan
+2025-01-08T18:30:07.169847-0700 - INFO - OpenAI response: ```json
+{
+  "origin": "Phoenix",
+  "origin_iata": "PHX",
+  "destination": "Boston",
+  "destination_iata": "BOS",
+  "start_date": "2025-01-25",
+  "end_date": "2025-01-28",
+  "budget": 3000,
+  "accommodation_preferences": null
+}
+```
+2025-01-08T18:30:07.170398-0700 - INFO - Running task: get_nights
+2025-01-08T18:30:07.171000-0700 - INFO - Running task: get_flight_deals
+2025-01-08T18:30:07.171327-0700 - INFO - Running task: fetch_flight_results
+2025-01-08T18:30:08.384547-0700 - INFO - Fetched flight results from SerpAPI.
+2025-01-08T18:30:08.384827-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:30:08.385129-0700 - INFO - Extracted 3 flight details.
+2025-01-08T18:30:08.385424-0700 - INFO - Running task: fetch_inbound_flights
+2025-01-08T18:30:10.945911-0700 - INFO - Fetched inbound flight results from SerpAPI using departure_token.
+2025-01-08T18:30:10.946262-0700 - INFO - Running task: extract_flight_details
+2025-01-08T18:30:10.946626-0700 - INFO - No best flights found, falling back to other flights.
+2025-01-08T18:30:10.946832-0700 - INFO - Extracted 3 flight details.
+2025-01-08T18:30:10.947084-0700 - INFO - Running task: get_flight_distance
+2025-01-08T18:30:10.947406-0700 - INFO - Running task: get_geo_coordinates
+2025-01-08T18:30:11.132998-0700 - INFO - Running task: get_geo_coordinates
+2025-01-08T18:30:11.224394-0700 - INFO - Running task: calculate_haversine_distance
+2025-01-08T18:30:11.224937-0700 - INFO - Straight-line distance between Phoenix and Boston: 3693.72 km
+2025-01-08T18:30:11.225192-0700 - INFO - Running task: get_hotel_deals
+2025-01-08T18:30:11.225584-0700 - INFO - Running task: fetch_hotels
+2025-01-08T18:30:12.894863-0700 - INFO - Fetched hotel results from SerpAPI.
+2025-01-08T18:30:12.895132-0700 - INFO - Running task: extract_top_5_hotels
+2025-01-08T18:30:12.895445-0700 - INFO - Extracted top 5 hotel details.
+2025-01-08T18:30:12.895797-0700 - INFO - Running task: get_nights
+2025-01-08T18:30:12.896074-0700 - INFO - Running task: get_geo_coordinates
+2025-01-08T18:30:12.896312-0700 - ERROR - No valid destination or fallback provided.
+2025-01-08T18:30:12.896485-0700 - WARNING - Hotel address 'Not Available' is invalid. Falling back to city-level geocoding for 'Boston'.
+2025-01-08T18:30:12.896622-0700 - INFO - Running task: get_geo_coordinates
+2025-01-08T18:30:12.988868-0700 - INFO - Running task: find_nearby_places
+2025-01-08T18:30:12.989326-0700 - INFO - Searching for nearby places around (42.3600825, -71.0588801) within 10000 meters.
+2025-01-08T18:30:13.301121-0700 - INFO - Found 20 nearby places.
+2025-01-08T18:30:13.301434-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:13.301737-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3466764,-71.0972178 (mode=walking).
+2025-01-08T18:30:13.503280-0700 - INFO - Distance: 3.8 km, Duration: 53 mins
+2025-01-08T18:30:13.503563-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:13.503844-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3381442,-71.0990577 (mode=walking).
+2025-01-08T18:30:13.707728-0700 - INFO - Distance: 4.5 km, Duration: 1 hour 4 mins
+2025-01-08T18:30:13.708041-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:13.708339-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3519736,-71.04968389999999 (mode=walking).
+2025-01-08T18:30:13.912396-0700 - INFO - Distance: 1.4 km, Duration: 21 mins
+2025-01-08T18:30:13.912774-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:13.913151-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.339381,-71.094048 (mode=walking).
+2025-01-08T18:30:14.065606-0700 - INFO - Distance: 4.0 km, Duration: 57 mins
+2025-01-08T18:30:14.066030-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.066409-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3592478,-71.0491475 (mode=walking).
+2025-01-08T18:30:14.237551-0700 - INFO - Distance: 1.0 km, Duration: 14 mins
+2025-01-08T18:30:14.237888-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.238441-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.367714,-71.0709771 (mode=walking).
+2025-01-08T18:30:14.401122-0700 - INFO - Distance: 1.6 km, Duration: 23 mins
+2025-01-08T18:30:14.401411-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.401720-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3528151,-71.0432778 (mode=walking).
+2025-01-08T18:30:14.557611-0700 - INFO - Distance: 1.8 km, Duration: 26 mins
+2025-01-08T18:30:14.557949-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.558288-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.316274,-71.0342146 (mode=walking).
+2025-01-08T18:30:14.718360-0700 - INFO - Distance: 6.9 km, Duration: 1 hour 36 mins
+2025-01-08T18:30:14.718626-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.718902-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.3739796,-71.0554239 (mode=walking).
+2025-01-08T18:30:14.899101-0700 - INFO - Distance: 2.1 km, Duration: 29 mins
+2025-01-08T18:30:14.899567-0700 - INFO - Running task: get_distance_duration
+2025-01-08T18:30:14.899961-0700 - INFO - Fetching distance and duration from 42.3600825,-71.0588801 to 42.363739,-71.05369999999999 (mode=walking).
+2025-01-08T18:30:15.069750-0700 - INFO - Distance: 0.7 km, Duration: 10 mins
+2025-01-08T18:30:15.070759-0700 - INFO - Running task: get_reddit_posts
+2025-01-08T18:30:15.452000-0700 - INFO - Running task: get_reddit_comments
+2025-01-08T18:30:15.758704-0700 - INFO - Running task: get_reddit_comments
+2025-01-08T18:30:16.066624-0700 - INFO - Running task: get_reddit_comments
+2025-01-08T18:30:16.308205-0700 - INFO - Running task: get_reddit_comments
+2025-01-08T18:30:16.548281-0700 - INFO - Running task: get_reddit_comments
+2025-01-08T18:30:16.780371-0700 - INFO - Running task: get_wikipedia_info
+2025-01-08T18:30:18.320058-0700 - INFO - Running task: get_wikipedia_sections
+2025-01-08T18:30:18.605276-0700 - WARNING - Section 'Culture' not found in Wikipedia page for Boston.
+2025-01-08T18:30:18.605482-0700 - WARNING - Section 'Tourism' not found in Wikipedia page for Boston.
+2025-01-08T18:30:18.676173-0700 - INFO - Generating itinerary with OpenAI using JSON schema guidance.
+2025-01-08T18:31:01.225061-0700 - INFO - Itinerary generated successfully.
