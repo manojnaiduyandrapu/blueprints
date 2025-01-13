@@ -16,10 +16,15 @@ def extract_trip_details_task(query: str) -> dict:
         {
             "role": "system",
             "content": (
+                f"Assume today's date is {datetime.now(timezone.utc).strftime('%Y-%m-%d')}.\n\n"
                 "You are an assistant that extracts travel planning details from a user's query. "
                 "Extract the destination, number of days, weekend flag, start_date, and end_date if provided. "
+                "If the weekend flag is true, compute the upcoming Saturday and Sunday dates. "
+                "If the weekend flag is false, consider the start_date as tomorrow. "
+                "If any information is missing, use default values (e.g., 3 days trip starting tomorrow). "
+                "If the start_date and end_date are provided, use them as the trip dates. "
                 "Return exactly a JSON object like "
-                "{'destination': 'Phoenix', 'days': 6, 'weekend': false, 'start_date': '2024-01-20', 'end_date': '2024-01-25'} "
+                "{'destination': 'Phoenix', 'days': 6, 'weekend': false, 'start_date': '2025-01-20', 'end_date': '2025-01-25'} "
                 "without any additional text."
             )
         },
@@ -237,64 +242,100 @@ async def get_geo_coordinates(destination: str) -> tuple[float, float]:
         logger.error(f"Error processing geocoding data: {e}")
         return None, None
 
-
 @task(
     name="get-weather-forecast",
-    description="Fetches weather forecast data using advanced logic for given coordinates and date range."
+    description="Fetches weather forecast or historical weather data for a given location and date range."
 )
-async def get_weather_forecast(lat: float, lon: float, days: int = 3) -> tuple[str, dict]:
-    try:
-        today = datetime.now(timezone.utc).date()
-        start_date = datetime.combine(today, datetime.min.time())
-        end_date = start_date + timedelta(days=days - 1)
-
+async def get_weather_forecast(lat: float, lon: float, start_date: datetime, end_date: datetime) -> tuple[str, dict]:
+    """
+    Fetches weather forecast (or historical data if the dates are in the past) for a given latitude and longitude,
+    and returns a textual summary along with structured weather information.
+    """
+    today = datetime.now(timezone.utc).date()
+    if end_date.date() < today:
+        logger.info("Fetching historical weather data using ERA5 API.")
+        url = "https://archive-api.open-meteo.com/v1/era5"
+        params = {
+            'latitude': lat,
+            'longitude': lon,
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d'),
+            'hourly': 'temperature_2m,relative_humidity_2m,wind_speed_10m,weathercode',
+            'timezone': 'auto'
+        }
+    else:
         logger.info("Fetching weather forecast data using Forecast API.")
         url = "https://api.open-meteo.com/v1/forecast"
         params = {
-            "latitude": lat,
-            "longitude": lon,
-            "current_weather": "true",
-            "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,weathercode",
-            "daily": "temperature_2m_max,temperature_2m_min,weathercode",
-            "timezone": "auto",
-            "start_date": start_date.strftime("%Y-%m-%d"),
-            "end_date": end_date.strftime("%Y-%m-%d")
+            'latitude': lat,
+            'longitude': lon,
+            'current_weather': 'true',
+            'hourly': 'temperature_2m,relative_humidity_2m,wind_speed_10m,weathercode',
+            'daily': 'temperature_2m_max,temperature_2m_min,weathercode',
+            'timezone': 'auto',
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d')
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
 
-        if "daily" in data and "weathercode" in data["daily"]:
-            logger.info("Processing Forecast API data.")
-            forecast_info = "Weather Forecast:\n"
-            weather_info = {}
-            for i in range(len(data["daily"]["time"])):
-                date_str = data["daily"]["time"][i]
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-                day_of_week = date_obj.strftime("%A")
-                temp_max = data["daily"]["temperature_2m_max"][i]
-                temp_min = data["daily"]["temperature_2m_min"][i]
-                weather_code = data["daily"]["weathercode"][i]
-                weather_description = map_weather_code_to_description(weather_code)
+    if "daily" in data and "weathercode" in data['daily']:
+        logger.info("Processing Forecast API data.")
+        forecast_info = "Weather Forecast:\n"
+        weather_info = {}
+        for i in range(len(data['daily']['time'])):
+            date_str = data['daily']['time'][i]
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            day_of_week = date_obj.strftime('%A')
+            temp_max = data['daily']['temperature_2m_max'][i]
+            temp_min = data['daily']['temperature_2m_min'][i]
+            weather_code = data['daily']['weathercode'][i]
+            weather_description = map_weather_code_to_description(weather_code)
+            forecast_info += f"- **{day_of_week}, {date_obj.strftime('%B %d')}**:\n"
+            forecast_info += f"  - Description: {weather_description}\n"
+            forecast_info += f"  - Temperature: {temp_min}°C (Min) / {temp_max}°C (Max)\n\n"
+            weather_info[date_str] = {
+                'description': weather_description,
+                'temp_day': temp_max,
+                'temp_night': temp_min
+            }
+        return forecast_info, weather_info
 
-                forecast_info += f"- **{day_of_week}, {date_obj.strftime('%B %d')}**:\n"
-                forecast_info += f"  - Description: {weather_description}\n"
-                forecast_info += f"  - Temperature: {temp_min}°C (Min) / {temp_max}°C (Max)\n\n"
-                weather_info[date_str] = {
-                    "description": weather_description,
-                    "temp_day": temp_max,
-                    "temp_night": temp_min
-                }
-            return forecast_info, weather_info
-        else:
-            logger.error("Unexpected data structure received from Weather API.")
-            return "Weather data is currently unavailable.", None
+    elif "hourly" in data and "weathercode" in data['hourly']:
+        logger.info("Processing ERA5 Historical API data.")
+        forecast_info = "Historical Weather Data:\n"
+        weather_info = {}
+        daily_temp_max = {}
+        daily_temp_min = {}
+        daily_weather_codes = {}
+        for i, date_str in enumerate(data['hourly']['time']):
+            date_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M").date()
+            temp = data['hourly']['temperature_2m'][i]
+            wcode = data['hourly']['weathercode'][i]
+            if date_obj not in daily_temp_max or temp > daily_temp_max[date_obj]:
+                daily_temp_max[date_obj] = temp
+            if date_obj not in daily_temp_min or temp < daily_temp_min[date_obj]:
+                daily_temp_min[date_obj] = temp
+            daily_weather_codes[date_obj] = wcode
+        for date_obj in sorted(daily_temp_max.keys()):
+            day_of_week = date_obj.strftime('%A')
+            temp_max = daily_temp_max[date_obj]
+            temp_min = daily_temp_min[date_obj]
+            weather_code = daily_weather_codes[date_obj]
+            weather_description = map_weather_code_to_description(weather_code)
+            forecast_info += f"- **{day_of_week}, {date_obj.strftime('%B %d')}**:\n"
+            forecast_info += f"  - Description: {weather_description}\n"
+            forecast_info += f"  - Temperature: {temp_min}°C (Min) / {temp_max}°C (Max)\n\n"
+            weather_info[date_obj.strftime('%Y-%m-%d')] = {
+                'description': weather_description,
+                'temp_day': temp_max,
+                'temp_night': temp_min
+            }
+        return forecast_info, weather_info
 
-    except httpx.RequestError as e:
-        logger.error(f"Error fetching weather data from Open-Meteo: {e}")
-        return "Weather forecast is currently unavailable.", None
-    except KeyError as e:
-        logger.error(f"Unexpected response structure from Open-Meteo API: {e}")
-        return "Weather forecast is currently unavailable.", None
+    else:
+        logger.error("Unexpected data structure received from Weather API.")
+        return "Weather data is currently unavailable.", None

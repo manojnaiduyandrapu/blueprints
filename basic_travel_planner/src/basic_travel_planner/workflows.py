@@ -51,7 +51,8 @@ def generate_itinerary(wiki_info, reddit_posts, weather_info, destination, days)
 
         prompt += (
             "\nPlease provide a detailed itinerary, including activities, places to visit, dining recommendations, weather forecast for each day"
-            "suggestions on what to pack according to the weather, and safety measures based on the Reddit discussions and comments."
+            "\nsuggestions on what to pack according to the weather, and safety measures based on the Reddit discussions and comments."
+            "\nNote: Remove markdown, provide itinerary by removing all instances of asterisks (**), hyphens (-), and any sequences of hyphens (---). Maintain the bullet-point list format in plain text without these formatting characters."
         )
 
         messages = [
@@ -71,7 +72,7 @@ def generate_itinerary(wiki_info, reddit_posts, weather_info, destination, days)
         logger.error(f"Error generating itinerary: {e}")
         return None
 
-@workflow(name="generate-travel-plan-from-query", description="Generate a travel plan based on a natural language query")
+@workflow(name="generate-travel-plan-from-query", description="Plan a trip based on a user query.")
 async def generate_travel_plan_from_query(query: str) -> dict:
     logger.info(f"Processing query: {query}")
     
@@ -86,7 +87,7 @@ async def generate_travel_plan_from_query(query: str) -> dict:
     start_date_str = details.get("start_date")
     end_date_str = details.get("end_date")
     
-    if weekend and not start_date_str and not end_date_str:
+    if weekend:
         weekend_dates = get_upcoming_weekend_dates()
         start_date_str, end_date_str = weekend_dates[0], weekend_dates[-1]
     
@@ -111,7 +112,7 @@ async def generate_travel_plan_from_query(query: str) -> dict:
         logger.error("Could not retrieve geographical coordinates.")
         return {}
     
-    weather_info, _ = get_weather_forecast(lat, lon, days)
+    weather_info, _ = get_weather_forecast(lat, lon, start_date, end_date)
     
     reddit_posts, _ = get_reddit_posts(destination, subreddit="travel", limit=5)
     if reddit_posts:
@@ -135,7 +136,7 @@ async def generate_travel_plan_from_query(query: str) -> dict:
     }
 
 def main():
-    result = asyncio.run(generate_travel_plan_from_query("Plan a weekend trip to los angeles"))
+    result = asyncio.run(generate_travel_plan_from_query("What to do in Phoenix this weekend"))
     if result and "itinerary" in result:
         print(result["itinerary"])
     else:
