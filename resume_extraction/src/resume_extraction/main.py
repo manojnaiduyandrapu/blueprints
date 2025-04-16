@@ -1,71 +1,23 @@
-# Resume Processing Script without Embedding and MongoDB
-
-from agentifyme import workflow, task
 import os
-import openai
+import asyncio
 import json
+import re
 from dotenv import load_dotenv
-from pydantic import BaseModel
-from typing import List
-import openai
-import structlog
 import docx
 import PyPDF2
-
-# Configure structlog for logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer(),
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
+from loguru import logger
+from models import CandidateData
+from agentifyme.ml.llm import (
+    LanguageModelConfig,
+    LanguageModelType,
+    get_language_model,
 )
 
-logger = structlog.get_logger()
-
-# Load environment variables from the .env file
 load_dotenv(dotenv_path=".env")
 
-# Set OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+if not os.getenv("OPENAI_API_KEY"):
+    raise ValueError("OpenAI API key not found. Please set it in the .env file.")
 
-# Pydantic models for structured data
-class ContactInfo(BaseModel):
-    first_name: str
-    last_name: str
-    middle_name: str
-    phone_number: str
-    email: str
-    linkedin: str
-
-class Education(BaseModel):
-    degree: str
-    year: str
-    college: str
-
-class Skills(BaseModel):
-    programming_languages: List[str]
-    frameworks_libraries: List[str]
-    tools_technologies: List[str]
-
-class Experience(BaseModel):
-    company_client: str
-    job_role: str
-    summary_of_responsibilities: str
-    place: str
-    start_date: str
-    end_date: str
-
-class CandidateData(BaseModel):
-    contact: ContactInfo
-    education: List[Education]
-    skills: Skills
-    experience: List[Experience]
-
-# Function to extract text from various resume file formats
 def extract_text_from_file(file_path: str) -> str:
     """
     Extracts text from a resume file.
@@ -88,7 +40,7 @@ def extract_text_from_file(file_path: str) -> str:
         elif file_extension == '.pdf':
             reader = PyPDF2.PdfReader(file_path)
             text = ''
-            for page_num, page in enumerate(reader.pages):
+            for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + '\n'
@@ -106,65 +58,70 @@ def extract_text_from_file(file_path: str) -> str:
         logger.error(f"Error extracting text from file: {e}")
         raise
 
-# Define the task for processing resume text with OpenAI API
-@task(name="Process Resume Text with OpenAI")
-def process_resume_text(resume_text: str) -> dict:
+async def process_resume_text(resume_text: str) -> CandidateData:
     """
-    Processes resume text using OpenAI API to extract structured data.
+    Asynchronously processes resume text using the language model to extract structured data.
 
     Args:
         resume_text (str): The plain text content of the resume.
 
     Returns:
-        dict: Parsed resume details as a dictionary.
+        CandidateData: Parsed resume details as a Pydantic model.
     """
-    logger.info("Sending resume text to OpenAI API for processing.")
-
-    # Define the prompt
+    logger.info("Sending resume text to the language model for processing.")
     prompt_content = (
-        "You are a resume extractor who extracts candidate details. Extract contact information, "
-        "education details, skills, and experience from the provided resume text. "
-        "Return the data in the following JSON schema: "
-        "{'contact': {'first_name': '', 'last_name': '', 'middle_name': 'NA', 'phone_number': 'NA', 'email': 'NA' or None, 'linkedin': 'NA'}, "
-        "'education': [{'degree': 'NA', 'year': 'NA', 'college': 'NA'}], "
+        "You are a resume extractor that strictly extracts candidate details from the resume text provided below. "
+        "Do not invent any details. Extract and return only the fields specified in valid JSON format: "
+        "{'contact': {'first_name': '', 'last_name': '', 'middle_name': '', 'phone_number': '', 'email': '', 'linkedin': ''}, "
+        "'education': [{'degree': '', 'year': '', 'college': ''}], "
         "'skills': {'programming_languages': [], 'frameworks_libraries': [], 'tools_technologies': []}, "
-        "'experience': [{'company_client': 'NA', 'job_role': 'NA', 'summary_of_responsibilities': 'NA', 'place': 'NA', 'start_date': 'NA','end_date': 'NA'}]}. "
-        "Ensure the output is a properly formatted JSON string without any additional delimiters or code block markers."
+        "'experience': [{'company_client': '', 'job_role': '', 'summary_of_responsibilities': '', 'place': '', 'start_date': '', 'end_date': ''}]}. "
+        "Resume Text:\n"
+        f"{resume_text}\n\n"
+        "Return the valid JSON exactly matching the given schema without any additional text."
     )
-
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": prompt_content},
-                {"role": "user", "content": resume_text},
-            ],
+        # Configure and retrieve the language model.
+        config = LanguageModelConfig(
+            model=LanguageModelType.OPENAI_GPT4o_MINI,
+            json_mode=False
         )
+        llm = get_language_model(config)
+        system_prompt = "You are an expert resume parser who extracts candidate details accurately."
 
-        resume_data_json = response.choices[0].message.content.strip()
+        response = await asyncio.to_thread(
+            llm.generate_from_prompt,
+            prompt=prompt_content,
+            system_prompt=system_prompt,
+            max_tokens=4096,
+        )
+        if not response.message:
+            logger.error("The language model returned an empty response.")
+            raise ValueError("Empty response received from language model.")
 
-        # Parse JSON string to dictionary
+        resume_data_json = response.message.strip()
+        logger.info(f"Extracted JSON string before code fence extraction: '{resume_data_json}'")
+        json_match = re.search(r'```json\s*(.*?)\s*```', resume_data_json, re.DOTALL)
+        if json_match:
+            resume_data_json = json_match.group(1).strip()
+            logger.info("Extracted JSON string from code fences.")
+
         resume_data_dict = json.loads(resume_data_json)
-        
-        # Use **dict to initialize the Pydantic model
+
         resume_data = CandidateData(**resume_data_dict)
         logger.info("Resume text processed successfully.")
-        
-        return resume_data  # Convert Pydantic model to dictionary for output
+        return resume_data
 
     except json.JSONDecodeError as json_err:
         logger.error(f"JSON decode error: {json_err}")
         raise
     except Exception as e:
-        logger.error(f"Error processing resume text with OpenAI: {e}")
+        logger.error(f"Error processing resume text with language model: {e}")
         raise
 
-
-# Define the workflow
-@workflow(name="Extract Resume Workflow")
-def extract_resume_workflow(file_path: str) -> dict:
+async def extract_resume_workflow(file_path: str) -> dict:
     """
-    Workflow to extract structured data from a resume file.
+    Asynchronous workflow to extract structured data from a resume file.
 
     Args:
         file_path (str): The path to the resume file.
@@ -173,29 +130,19 @@ def extract_resume_workflow(file_path: str) -> dict:
         dict: Parsed resume details.
     """
     logger.info("Starting resume extraction workflow.")
-
-    # Step 1: Extract text from the resume file
-    resume_text = extract_text_from_file(file_path)
-
-    # Step 2: Process the extracted text with OpenAI API
-    parsed_resume_data = process_resume_text(resume_text)
-
+    resume_text = await asyncio.to_thread(extract_text_from_file, file_path)
+    parsed_resume_data = await process_resume_text(resume_text)
     logger.info("Resume extraction workflow completed successfully.")
-
-    # Convert Pydantic model to dictionary for output
     return parsed_resume_data.dict()
 
-# Usage:
-if __name__ == "__main__":
-    # Specify the file path directly
-    file_path = "Lavanya (DevOps)_V.docx"  # Replace with the actual path to the resume file
-
+async def main(file_path: str):
     try:
-        # Execute the workflow
-        result = extract_resume_workflow(file_path)
-        print(json.dumps(result, indent=4))  # Print in formatted JSON
+        result = await extract_resume_workflow(file_path)
+        print(json.dumps(result, indent=4)) 
     except Exception as e:
         logger.error(f"Failed to extract resume data: {e}")
         print(f"Error: {e}")
 
-
+if __name__ == "__main__":
+    file_path = "Swetha.docx"
+    asyncio.run(main(file_path))

@@ -1,127 +1,130 @@
-# generate_email.py
-
 import os
-import openai
+import asyncio
+from typing import Dict, Any
 from dotenv import load_dotenv
 
-# Load environment variables from the .env file
+from agentifyme import workflow
+from agentifyme.ml.llm import (
+    LanguageModelConfig,
+    LanguageModelType,
+    get_language_model,
+)
+from agentifyme.workflows import WorkflowExecutionError
+from loguru import logger
+
 load_dotenv(dotenv_path=".env")
 
-# Set OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-if not openai.api_key:
+if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("OpenAI API key not found. Please set it in the .env file.")
 
-def get_user_input(prompt_text, required=True):
-    """
-    Prompt the user for input and ensure required fields are not empty.
-    """
-    while True:
-        user_input = input(prompt_text).strip()
-        if required and not user_input:
-            print("This field is required. Please provide a valid input.")
-        else:
-            return user_input
 
-def get_recipient_details():
+async def construct_email_prompt(recipient: Dict[str, str], subject: str) -> str:
     """
-    Gather detailed information about the email recipient.
+    Asynchronously constructs the prompt for email generation.
     """
-    print("\nPlease provide details about the email recipient:")
-    name = get_user_input("Recipient's Name: ")
-    relationship = get_user_input("Your relationship with the recipient (e.g., colleague, client, friend): ")
-    purpose = get_user_input("Purpose of the email (e.g., follow-up, introduction, invitation): ")
-    tone = get_tone()
-    return {
-        "name": name,
-        "relationship": relationship,
-        "purpose": purpose,
-        "tone": tone
-    }
+    prompt = f"""Generate a personalized professional email based on the following specifications:
 
-def get_tone():
-    """
-    Allow the user to select a tone for the email from predefined options.
-    """
-    tones = ["Formal", "Informal", "Friendly", "Professional", "Persuasive"]
-    print("\nSelect the desired tone for your email:")
-    for idx, tone in enumerate(tones, start=1):
-        print(f"{idx}. {tone}")
-    
-    while True:
-        choice = get_user_input("Enter the number corresponding to your choice: ")
-        if choice.isdigit() and 1 <= int(choice) <= len(tones):
-            return tones[int(choice)-1].lower()
-        else:
-            print(f"Please enter a number between 1 and {len(tones)}.")
+RECIPIENT INFORMATION:
+- Name: {recipient['name']}
+- Relationship: {recipient['relationship']}
+- Purpose: {recipient['purpose']}
+- Tone: {recipient['tone']}
 
-def construct_prompt(recipient, subject, additional_info=""):
-    """
-    Construct the prompt to send to OpenAI based on user inputs.
-    """
-    prompt = f"""You are an expert email writer. Write a personalized email based on the following details:
+EMAIL SUBJECT: {subject}
 
-Recipient's Name: {recipient['name']}
-Relationship: {recipient['relationship']}
-Purpose: {recipient['purpose']}
-Tone: {recipient['tone']}
+REQUIREMENTS:
+1. Begin with an appropriate greeting using the recipient's name
+2. Write a concise and focused email body that directly addresses the purpose
+3. Maintain a consistent {recipient['tone']} tone throughout
+4. Include specific details relevant to the purpose
+5. End with a clear call-to-action if appropriate
+6. Add a professional closing with your name
 
-Subject: {subject}
-
-{additional_info}
-
-Requirements:
-- Address the recipient by name.
-- Keep the email concise and to the point.
-- Maintain the specified tone throughout.
-- Include a clear call-to-action if applicable.
+The email should be well-structured, grammatically correct, and appropriate for professional communication.
 """
+    logger.info("Email prompt constructed")
     return prompt
 
-def generate_email(prompt):
+
+async def generate_email_content(prompt_text: str) -> str:
     """
-    Generate the email content using OpenAI's API.
+    Asynchronously generates email content using a language model.
+    Wraps the synchronous generate_from_prompt call into a thread.
     """
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are an expert email writer."},
-                {"role": "user", "content": prompt},
-            ],
+        config = LanguageModelConfig(
+            model=LanguageModelType.OPENAI_GPT4o_MINI,
+            json_mode=False
         )
-        email_content = response['choices'][0]['message']['content'].strip()
-        return email_content
-    except openai.error.OpenAIError as e:
-        print(f"An error occurred: {e}")
-        return None
+        llm = get_language_model(config)
 
-def main():
-    print("=== AI Personalized Email Generator ===\n")
-    
-    # Gather recipient details
-    recipient = get_recipient_details()
-    
-    # Gather email subject
-    subject = get_user_input("\nEnter the email subject: ")
-    
-    # Optional: Gather additional information or context
-    additional_info = get_user_input("\nAny additional information or context to include? (Press Enter to skip): ", required=False)
-    
-    # Construct the prompt
-    prompt = construct_prompt(recipient, subject, additional_info)
-    
-    print("\nGenerating email... Please wait.\n")
-    
-    # Generate the email content
-    email_content = generate_email(prompt)
-    
-    if email_content:
-        print("\nGenerated Email Content:\n")
-        print(email_content)
-    else:
-        print("❌ Failed to generate the email.")
+        system_prompt = "You are an expert email writer who specializes in creating effective professional communications."
+
+        # Run the synchronous call in a thread
+        response = await asyncio.to_thread(
+            llm.generate_from_prompt,
+            prompt=prompt_text,
+            system_prompt=system_prompt,
+            max_tokens=4096,
+        )
+
+        if response.message is None:
+            logger.error("Failed to generate email content")
+            return None
+
+        email_content = response.message.strip()
+        logger.info("Email content generated successfully")
+        return email_content
+
+    except Exception as e:
+        logger.error(f"Error generating email: {e}")
+        raise
+
+
+@workflow(name="generate_email", description="Generate a personalized email based on recipient details and subject")
+async def generate_email_workflow(recipient_data: Dict[str, str], subject: str) -> Dict[str, Any]:
+    """
+    Asynchronous workflow to generate a personalized email.
+    """
+    try:
+        prompt = await construct_email_prompt(recipient_data, subject)
+        email_content = await generate_email_content(prompt)
+
+        if not email_content:
+            raise ValueError("Failed to generate email content")
+
+        return {
+            "email_content": email_content,
+            "recipient": recipient_data["name"],
+            "subject": subject,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.exception(f"Email generation workflow failed: {e}")
+        raise WorkflowExecutionError(f"Error in email generation workflow: {e}")
+
+
+async def main():
+    recipient = {
+        "name": "John Smith",
+        "relationship": "colleague",
+        "purpose": "project update",
+        "tone": "professional"
+    }
+
+    subject = "Weekly Project Status Update"
+
+    try:
+        result = await generate_email_workflow(recipient, subject)
+        print("\n=== Generated Email ===\n")
+        print(result["email_content"])
+
+    except WorkflowExecutionError as e:
+        print(f"❌ Workflow execution failed: {e}")
+    except Exception as e:
+        print(f"❌ An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

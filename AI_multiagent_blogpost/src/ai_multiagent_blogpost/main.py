@@ -1,117 +1,129 @@
-# main.py
+import os
+import asyncio
+from typing import Dict, Any
+from dotenv import load_dotenv
 
-import argparse
-import sys
+from agentifyme import workflow
+from agentifyme.ml.llm import (
+    LanguageModelConfig,
+    LanguageModelType,
+    get_language_model,
+)
+from agentifyme.workflows import WorkflowExecutionError
+from loguru import logger
 
-# Importing agent functions from the agents package
-from agents.seo_agent import generate_keywords
-from agents.content_outline_agent import generate_content_outline
-from agents.research_agent import research_topic
-from agents.keyword_integration_agent import integrate_keywords
-from agents.drafting_agent import draft_blog_post
-from agents.editing_agent import edit_draft
-from agents.fact_checking_agent import fact_check
-from agents.seo_optimization_agent import optimize_seo
+load_dotenv(dotenv_path=".env")
 
-def create_blog_post(topic):
-    """
-    Orchestrates the blog post creation process by sequentially invoking
-    each agent and passing the necessary data between them.
-    
-    Parameters:
-        topic (str): The topic of the blog post.
-    
-    Returns:
-        tuple: Contains the final SEO-optimized blog post and the generated keywords.
-    """
-    print("\nStarting blog post creation process...\n")
-    
-    # 1. SEO Agent: Generate Keywords
-    print("1. Generating SEO keywords...")
-    keywords = generate_keywords(topic)
-    print("SEO Keywords Generated:\n")
-    
-    # 2. Content Outline Agent: Build Content Outline
-    print("2. Creating content outline...")
-    outline = generate_content_outline(keywords, topic)
-    print("Content Outline Generated:\n")
-    
-    # 3. Research Agent: Gather Information
-    print("3. Researching topic based on outline...")
-    research_data = research_topic(outline)
-    print("Research completed.\n")
-    
-    # 4. Keyword Integration Agent: Embed Keywords into Research Data
-    print("4. Integrating keywords into research data...")
-    integrated_research = integrate_keywords(research_data, keywords)
-    print("Keyword Integration completed.\n")
-    
-    # 5. Drafting Agent: Create Initial Draft
-    print("5. Drafting blog post...")
-    draft = draft_blog_post(topic, integrated_research)
-    print("Drafting completed.\n")
-    
-    # 6. Editing Agent: Refine Draft
-    print("6. Editing draft...")
-    edited_draft = edit_draft(draft)
-    print("Editing completed.\n")
-    
-    # 7. Fact-Checking Agent: Verify Facts
-    print("7. Fact-checking draft...")
-    fact_checked_draft = fact_check(edited_draft)
-    print("Fact-checking completed.\n")
-    
-    # 8. SEO Optimization Agent: Final SEO Enhancements
-    print("8. Optimizing for SEO...")
-    seo_content = optimize_seo(fact_checked_draft, keywords)
-    print("SEO Optimization completed.\n")
-    
-    print("Blog post creation process completed.\n")
-    return seo_content, keywords
+if not os.getenv("OPENAI_API_KEY"):
+    raise ValueError("OpenAI API key not found. Please set it in the .env file.")
 
-def get_topic():
-    """
-    Retrieves the blog topic either from command-line arguments or prompts the user.
-    
-    Returns:
-        str: The blog topic.
-    """
-    parser = argparse.ArgumentParser(description="Multi-Agent Blog Post Writer")
-    parser.add_argument(
-        'topic',
-        type=str,
-        nargs='?',
-        help='The topic for the blog post'
-    )
-    args = parser.parse_args()
 
-    if args.topic:
-        return args.topic.strip()
-    else:
-        return input("Please enter the blog topic: ").strip()
+async def construct_email_prompt(recipient: Dict[str, str], subject: str) -> str:
+    """
+    Asynchronously constructs the prompt for email generation.
+    """
+    prompt = f"""Generate a personalized professional email based on the following specifications:
 
-def main():
+RECIPIENT INFORMATION:
+- Name: {recipient['name']}
+- Relationship: {recipient['relationship']}
+- Purpose: {recipient['purpose']}
+- Tone: {recipient['tone']}
+
+EMAIL SUBJECT: {subject}
+
+REQUIREMENTS:
+1. Begin with an appropriate greeting using the recipient's name
+2. Write a concise and focused email body that directly addresses the purpose
+3. Maintain a consistent {recipient['tone']} tone throughout
+4. Include specific details relevant to the purpose
+5. End with a clear call-to-action if appropriate
+6. Add a professional closing with your name
+
+The email should be well-structured, grammatically correct, and appropriate for professional communication.
+"""
+    logger.info("Email prompt constructed")
+    return prompt
+
+
+async def generate_email_content(prompt_text: str) -> str:
     """
-    The main function that initiates the blog post creation process.
+    Asynchronously generates email content using a language model.
+    Wraps the synchronous generate_from_prompt call into a thread.
     """
-    topic = get_topic()
-    
-    if not topic:
-        print("Error: Blog topic cannot be empty. Please provide a valid topic.")
-        sys.exit(1)
-    
-    final_blog_post, keywords = create_blog_post(topic)
-    
-    # Display the Final Blog Post
-    print("----- Final Blog Post -----\n")
-    print(final_blog_post)
-    print("\n----- End of Blog Post -----\n")
-    
-    # Display Keywords
-    #print("----- SEO Keywords -----\n")
-    #print(keywords)
-    #print("\n")
+    try:
+        config = LanguageModelConfig(
+            model=LanguageModelType.OPENAI_GPT4o_MINI,
+            json_mode=False
+        )
+        llm = get_language_model(config)
+
+        system_prompt = "You are an expert email writer who specializes in creating effective professional communications."
+
+        response = await asyncio.to_thread(
+            llm.generate_from_prompt,
+            prompt=prompt_text,
+            system_prompt=system_prompt,
+            max_tokens=4096,
+        )
+
+        if response.message is None:
+            logger.error("Failed to generate email content")
+            return None
+
+        email_content = response.message.strip()
+        logger.info("Email content generated successfully")
+        return email_content
+
+    except Exception as e:
+        logger.error(f"Error generating email: {e}")
+        raise
+
+
+@workflow(name="generate_email", description="Generate a personalized email based on recipient details and subject")
+async def generate_email_workflow(recipient_data: Dict[str, str], subject: str) -> Dict[str, Any]:
+    """
+    Asynchronous workflow to generate a personalized email.
+    """
+    try:
+        prompt = await construct_email_prompt(recipient_data, subject)
+        email_content = await generate_email_content(prompt)
+
+        if not email_content:
+            raise ValueError("Failed to generate email content")
+
+        return {
+            "email_content": email_content,
+            "recipient": recipient_data["name"],
+            "subject": subject,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.exception(f"Email generation workflow failed: {e}")
+        raise WorkflowExecutionError(f"Error in email generation workflow: {e}")
+
+
+async def main(recipient: Dict[str, str], subject: str):
+    try:
+        result = await generate_email_workflow(recipient, subject)
+        print("\n=== Generated Email ===\n")
+        print(result["email_content"])
+
+    except WorkflowExecutionError as e:
+        print(f"❌ Workflow execution failed: {e}")
+    except Exception as e:
+        print(f"❌ An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
-    print("Welcome to the Multi-Agent Blog Post Writer!\n")
-    main()
+    recipient = {
+        "name": "John Smith",
+        "relationship": "colleague",
+        "purpose": "project update",
+        "tone": "professional"
+    }
+    subject = "Weekly Project Status Update"
+    
+    # Passing recipient and subject directly to main.
+    asyncio.run(main(recipient, subject))
